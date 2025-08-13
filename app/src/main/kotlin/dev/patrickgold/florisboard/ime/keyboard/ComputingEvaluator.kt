@@ -56,6 +56,7 @@ import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.key.KeyType
 import dev.patrickgold.florisboard.lib.FlorisLocale
 import dev.patrickgold.jetpref.datastore.ui.vectorResource
+import dev.patrickgold.florisboard.R
 
 interface ComputingEvaluator {
     val version: Int
@@ -178,6 +179,9 @@ fun ComputingEvaluator.computeLabel(data: KeyData): String? {
 fun ComputingEvaluator.computeImageVector(data: KeyData): ImageVector? {
     val evaluator = this
     return when (data.code) {
+        KeyCode.AI_SUGGEST -> {
+            this.context()?.vectorResource(id = R.drawable.ic_ai_suggest)
+        }
         KeyCode.ARROW_LEFT -> {
             Icons.AutoMirrored.Filled.KeyboardArrowLeft
         }

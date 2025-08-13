@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.text.keyboard
 
+import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.florisPreferenceModel
 import dev.patrickgold.florisboard.ime.keyboard.AbstractKeyData
 import dev.patrickgold.florisboard.ime.keyboard.ComputingEvaluator

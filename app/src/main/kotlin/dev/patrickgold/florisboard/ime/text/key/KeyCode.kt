@@ -112,6 +112,8 @@ object KeyCode {
 
     const val SETTINGS =                    -301
 
+    const val AI_SUGGEST =                  -401
+
     const val CURRENCY_SLOT_1 =             -801
     const val CURRENCY_SLOT_2 =             -802
     const val CURRENCY_SLOT_3 =             -803

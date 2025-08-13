@@ -113,6 +113,7 @@ import dev.patrickgold.florisboard.lib.util.ViewUtils
 import dev.patrickgold.florisboard.lib.util.debugSummarize
 import dev.patrickgold.florisboard.lib.util.launchActivity
 import dev.patrickgold.jetpref.datastore.model.observeAsState
+import dev.patrickgold.florisboard.ime.core.ScreenCaptureManager
 import java.lang.ref.WeakReference
 import org.florisboard.lib.android.AndroidInternalR
 import org.florisboard.lib.android.AndroidVersion
@@ -126,24 +127,32 @@ import org.florisboard.lib.snygg.ui.SnyggButton
 import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
+import android.graphics.Bitmap
 
-/**
- * Global weak reference for the [FlorisImeService] class. This is needed as certain actions (request hide, switch to
- * another input method, getting the editor instance / input connection, etc.) can only be performed by an IME
- * service class and no context-bound managers. This reference is exclusively used by the companion helper methods
- * of [FlorisImeService], which provide a safe and memory-leak-free way of performing certain actions on the Floris
- * input method service instance.
- */
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
 private var FlorisImeServiceReference = WeakReference<FlorisImeService?>(null)
 
-/**
- * Core class responsible for linking together all managers and UI compose-ables to provide an IME service. Sets
- * up the window and context to be lifecycle-aware, so LiveData and Jetpack Compose can be used without issues.
- */
-class FlorisImeService : LifecycleInputMethodService() {
+class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.ScreenCaptureListener {
+
     companion object {
         private val InlineSuggestionUiSmallestSize = Size(0, 0)
         private val InlineSuggestionUiBiggestSize = Size(Int.MAX_VALUE, Int.MAX_VALUE)
+
+        fun onAiSuggestKeyPress() {
+            flogInfo { "AI Suggest key press received in FlorisImeService companion!" }
+            // FlorisImeServiceReference.get()?.let { service ->
+            //    ScreenCaptureManager.requestScreenshot(service)
+            // }
+            FlorisImeServiceReference.get()?.captureScreenWithoutIme()
+        }
 
         fun currentInputConnection(): InputConnection? {
             return FlorisImeServiceReference.get()?.currentInputConnection
@@ -266,17 +275,43 @@ class FlorisImeService : LifecycleInputMethodService() {
     private var isFullscreenUiMode by mutableStateOf(false)
     private var isExtractUiShown by mutableStateOf(false)
     private var resourcesContext by mutableStateOf(this as Context)
-
+    private var aiCaptureInProgress = false
     private val wallpaperChangeReceiver = WallpaperChangeReceiver()
 
     init {
         setTheme(R.style.FlorisImeTheme)
     }
 
+    fun captureScreenWithoutIme() {
+        if (aiCaptureInProgress) return       // debounce double-taps
+        aiCaptureInProgress = true
+
+        // 1. Hide the keyboard
+        requestHideSelf(0)
+
+        // 2. Wait just long enough for the window to disappear (≈2 frames)
+        lifecycleScope.launch {
+            delay(360)                        // 120 ms ≈ 2 display frames at 60 Hz
+
+            // 3. Take the screenshot
+            ScreenCaptureManager.requestScreenshot(this@FlorisImeService)
+
+            // 4. Show the keyboard again after a tiny pause (ensures projection starts)
+            delay(100)
+            requestShowSelf(0)
+
+            aiCaptureInProgress = false
+        }
+    }
+
+
     override fun onCreate() {
         super.onCreate()
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
+
+        ScreenCaptureManager.setListener(this)
+
         subtypeManager.activeSubtypeFlow.collectLatestIn(lifecycleScope) { subtype ->
             val config = Configuration(resources.configuration)
             if (prefs.localization.displayKeyboardLabelsInSubtypeLanguage.get()) {
@@ -297,6 +332,38 @@ class FlorisImeService : LifecycleInputMethodService() {
         @Suppress("DEPRECATION") // We do not retrieve the wallpaper but only listen to changes
         registerReceiver(wallpaperChangeReceiver, IntentFilter(Intent.ACTION_WALLPAPER_CHANGED))
     }
+
+    // CALLBACK: This is where we receive the final screenshot
+    override fun onScreenshotCaptured(bitmap: Bitmap) {
+        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot received in FlorisImeService! Size: ${bitmap.width}x${bitmap.height}" }
+        saveBitmapForDebug(bitmap)
+        // NEXT STEP: Send the 'bitmap' to the AI model here.
+    }
+
+    // CALLBACK: This is where we handle permission denial
+    override fun onPermissionDenied() {
+        showShortToast("Screen capture permission was denied.")
+    }
+
+    private fun saveBitmapForDebug(bitmap: Bitmap) {
+        try {
+            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
+            val fileName = "screenshot_$timestamp.png"
+            val directory = getExternalFilesDir(null)
+            val file = File(directory, fileName)
+
+            val fileOutputStream = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
+            fileOutputStream.close()
+
+            flogInfo(LogTopic.IMS_EVENTS) { "Screenshot saved for debugging to: ${file.absolutePath}" }
+            showShortToast("Screenshot saved!")
+
+        } catch (e: Exception) {
+            flogError { "Failed to save bitmap for debug: ${e.message}" }
+        }
+    }
+
 
     override fun onCreateInputView(): View {
         super.installViewTreeOwners()
@@ -334,6 +401,9 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        ScreenCaptureManager.setListener(null)
+
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
         inputWindowView = null

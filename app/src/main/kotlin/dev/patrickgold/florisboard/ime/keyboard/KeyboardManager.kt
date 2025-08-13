@@ -475,6 +475,9 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             else -> FlorisImeService.switchToNextInputMethod()
         }
     }
+    private fun handleAiSuggest() {
+        FlorisImeService.onAiSuggestKeyPress()
+    }
 
     /**
      * Handles a [KeyCode.SHIFT] down event.
@@ -689,6 +692,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
     override fun onInputKeyUp(data: KeyData) = activeState.batchEdit {
         when (data.code) {
+            KeyCode.AI_SUGGEST -> handleAiSuggest()
             KeyCode.ARROW_DOWN,
             KeyCode.ARROW_LEFT,
             KeyCode.ARROW_RIGHT,
