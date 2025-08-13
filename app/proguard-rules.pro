@@ -27,3 +27,7 @@
 
 # @Serializable and @Polymorphic are used at runtime for polymorphic serialization.
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault
+
+# Rules for MediaPipe
+-keep class com.google.protobuf.** { *; }
+-keep class javax.annotation.processing.** { *; }

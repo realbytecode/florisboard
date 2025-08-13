@@ -148,6 +148,7 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -159,6 +160,7 @@ android {
 
     lint {
         baseline = file("lint.xml")
+        disable.add("RestrictedApi")
     }
 
     testOptions {
@@ -208,6 +210,8 @@ dependencies {
     implementation(libs.patrickgold.jetpref.datastore.model)
     implementation(libs.patrickgold.jetpref.datastore.ui)
     implementation(libs.patrickgold.jetpref.material.ui)
+    implementation(libs.mediapipe.tasks.genai)
+    implementation(libs.mediapipe.tasks.vision)
 
     implementation(project(":lib:android"))
     implementation(project(":lib:color"))

@@ -128,6 +128,7 @@ import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import android.graphics.Bitmap
+import dev.patrickgold.florisboard.ime.ai.AiManager
 
 import java.io.File
 import java.io.FileOutputStream
@@ -267,6 +268,8 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
     private val subtypeManager by subtypeManager()
     private val themeManager by themeManager()
 
+    private val aiManager by lazy { AiManager(this) }
+
     private val activeState get() = keyboardManager.activeState
     private var inputWindowView by mutableStateOf<View?>(null)
     private var inputViewSize by mutableStateOf(IntSize.Zero)
@@ -311,6 +314,7 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
 
         ScreenCaptureManager.setListener(this)
+        aiManager.initialize()
 
         subtypeManager.activeSubtypeFlow.collectLatestIn(lifecycleScope) { subtype ->
             val config = Configuration(resources.configuration)
@@ -335,14 +339,38 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
 
     // CALLBACK: This is where we receive the final screenshot
     override fun onScreenshotCaptured(bitmap: Bitmap) {
-        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot received in FlorisImeService! Size: ${bitmap.width}x${bitmap.height}" }
-        saveBitmapForDebug(bitmap)
-        // NEXT STEP: Send the 'bitmap' to the AI model here.
+        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot received in FlorisImeService! Original size: ${bitmap.width}x${bitmap.height}" }
+        val scaledBitmap = downscaleBitmap(bitmap)
+        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot downscaled to: ${scaledBitmap.width}x${scaledBitmap.height}" }
+        saveBitmapForDebug(scaledBitmap)
+        aiManager.getSummary(scaledBitmap, "summarize this")
     }
 
     // CALLBACK: This is where we handle permission denial
     override fun onPermissionDenied() {
         showShortToast("Screen capture permission was denied.")
+    }
+
+    private fun downscaleBitmap(bitmap: Bitmap): Bitmap {
+        val maxDimension = 720
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
+
+        if (originalWidth <= maxDimension && originalHeight <= maxDimension) {
+            return bitmap
+        }
+
+        val newWidth: Int
+        val newHeight: Int
+        if (originalWidth > originalHeight) {
+            newWidth = maxDimension
+            newHeight = (originalHeight * (maxDimension.toFloat() / originalWidth)).toInt()
+        } else {
+            newHeight = maxDimension
+            newWidth = (originalWidth * (maxDimension.toFloat() / originalHeight)).toInt()
+        }
+
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 
     private fun saveBitmapForDebug(bitmap: Bitmap) {
