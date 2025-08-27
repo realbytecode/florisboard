@@ -137,6 +137,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -315,6 +316,7 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
 
         ScreenCaptureManager.setListener(this)
+        // Initialize AI Manager
         aiManager.initialize()
 
         subtypeManager.activeSubtypeFlow.collectLatestIn(lifecycleScope) { subtype ->
@@ -347,18 +349,19 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         
         // Set processing state
         AiSuggestionProviderInstance.provider.setProcessing(true)
-        showShortToast("AI is processing...")
+        showShortToast("Generating AI response...")
         
-        // Get AI summary with callback
-        aiManager.getSummary(scaledBitmap, "summarize this", 
-            onResult = { summary ->
-                // Set the AI suggestion - this will automatically trigger NlpManager to refresh
-                AiSuggestionProviderInstance.provider.setAiSuggestion(summary)
-                flogInfo(LogTopic.IMS_EVENTS) { "AI suggestion added: $summary" }
+        // Generate contextual AI response based on screenshot
+        // Using the "response_suggestion" prompt for smart replies
+        aiManager.generateResponse(scaledBitmap, "response_suggestion", 
+            onResult = { response ->
+                // Set the AI-generated response - this will automatically trigger NlpManager to refresh
+                AiSuggestionProviderInstance.provider.setAiSuggestion(response)
+                flogInfo(LogTopic.IMS_EVENTS) { "AI generated response: $response" }
             },
             onError = { error ->
                 AiSuggestionProviderInstance.provider.setProcessing(false)
-                flogError { "AI processing error: $error" }
+                flogError { "AI response generation failed: $error" }
             }
         )
     }

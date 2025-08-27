@@ -1,0 +1,8 @@
+Analyze the screenshot and provide a brief summary of what you see.
+
+Focus on:
+- Main content or conversation
+- Key information displayed
+- Important context
+
+Provide a concise summary in 1-2 sentences.

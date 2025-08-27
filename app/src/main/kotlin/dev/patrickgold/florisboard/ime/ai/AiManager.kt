@@ -15,7 +15,9 @@ class AiManager(private val context: Context) {
     private var selectedModel: AiModel? = null
     private var llmInference: LlmInference? = null
     private var llmSession: LlmInferenceSession? = null
-
+    // PromptsManager is lightweight - just holds configuration
+    private val promptsManager = PromptsManager(context)
+    
     fun initialize() {
         flogInfo { "Initializing" }
         loadAllowlist()
@@ -38,6 +40,7 @@ class AiManager(private val context: Context) {
         flogInfo { "Checking for model '$modelName' at: $modelPath" }
         if (!modelFile.exists()) {
             flogInfo { "Model file not found at the specified path. Please ensure the model is pushed to the app's internal storage." }
+            // Don't throw exception - just return gracefully
             return
         }
         flogInfo { "Model file found. Proceeding with initialization." }
@@ -85,27 +88,48 @@ class AiManager(private val context: Context) {
         }
     }
 
-    fun getSummary(bitmap: Bitmap, prompt: String, onResult: (String) -> Unit, onError: (String) -> Unit = {}) {
-        flogInfo { "getSummary called with prompt: '$prompt' and bitmap size: ${bitmap.width}x${bitmap.height}" }
+    /**
+     * Generates a contextual AI response for the given screenshot
+     * @param bitmap The screenshot to analyze
+     * @param promptId The ID of the prompt to use (from prompts_config.json)
+     * @param onResult Callback for successful response
+     * @param onError Callback for errors
+     */
+    fun generateResponse(bitmap: Bitmap, promptId: String, onResult: (String) -> Unit, onError: (String) -> Unit = {}) {
+        val prompt = promptsManager.getPrompt(promptId) ?: promptsManager.getDefaultPrompt()
+        processScreenshotWithPrompt(bitmap, prompt, onResult, onError)
+    }
+    
+    /**
+     * Processes a screenshot with a custom prompt to generate AI response
+     * @param bitmap The screenshot to analyze
+     * @param prompt The custom prompt text
+     * @param onResult Callback for successful response
+     * @param onError Callback for errors
+     */
+    private fun processScreenshotWithPrompt(bitmap: Bitmap, prompt: String, onResult: (String) -> Unit, onError: (String) -> Unit = {}) {
+        flogInfo { "Processing screenshot with prompt: '${prompt.take(100)}...' and bitmap size: ${bitmap.width}x${bitmap.height}" }
+        
         if (selectedModel == null) {
-            flogInfo { "Cannot get summary: No AI model selected." }
+            flogInfo { "Cannot generate response: No AI model selected." }
             onError("No AI model selected")
             return
         }
+        
         if (llmInference == null || llmSession == null) {
-            flogInfo { "Cannot get summary: LlmInference engine or session not initialized." }
-            onError("AI engine not initialized")
+            flogInfo { "Cannot generate response: LlmInference engine or session not initialized." }
+            onError("AI model not loaded. Push model file to app storage.")
             return
         }
 
         try {
             val fullPrompt = "$prompt <end_of_turn>"
-            flogInfo { "Adding query chunk to session: $fullPrompt" }
+            flogInfo { "Preparing prompt for AI processing" }
             llmSession?.addQueryChunk(fullPrompt)
-            flogInfo { "Converting Bitmap to MPImage and adding to session." }
+            flogInfo { "Converting screenshot to MPImage format" }
             val mpImage = BitmapImageBuilder(bitmap).build()
             llmSession?.addImage(mpImage)
-            flogInfo { "Image added. Generating response from LLM..." }
+            flogInfo { "Generating contextual response..." }
 
             val fullResponse = StringBuilder()
             llmSession?.generateResponseAsync { partialResult, done ->
@@ -115,9 +139,14 @@ class AiManager(private val context: Context) {
                 //}
                 fullResponse.append(partialResult)
                 if (done) {
-                    flogInfo { "Successfully received response from LLM." }
-                    val response = fullResponse.toString().trim()
-                    flogInfo { "Summary from LLM: $response" }
+                    flogInfo { "AI response generation completed" }
+                    // Clean up the response by removing any special tokens
+                    val response = fullResponse.toString()
+                        .trim()
+                        .replace("<end_of_turn>", "")
+                        .replace("<start_of_turn>", "")
+                        .trim()
+                    flogInfo { "Generated response: $response" }
                     onResult(response)
                 }
             }
