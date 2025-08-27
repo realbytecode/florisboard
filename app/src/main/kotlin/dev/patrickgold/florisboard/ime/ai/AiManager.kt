@@ -85,14 +85,16 @@ class AiManager(private val context: Context) {
         }
     }
 
-    fun getSummary(bitmap: Bitmap, prompt: String) {
+    fun getSummary(bitmap: Bitmap, prompt: String, onResult: (String) -> Unit, onError: (String) -> Unit = {}) {
         flogInfo { "getSummary called with prompt: '$prompt' and bitmap size: ${bitmap.width}x${bitmap.height}" }
         if (selectedModel == null) {
             flogInfo { "Cannot get summary: No AI model selected." }
+            onError("No AI model selected")
             return
         }
         if (llmInference == null || llmSession == null) {
             flogInfo { "Cannot get summary: LlmInference engine or session not initialized." }
+            onError("AI engine not initialized")
             return
         }
 
@@ -114,11 +116,14 @@ class AiManager(private val context: Context) {
                 fullResponse.append(partialResult)
                 if (done) {
                     flogInfo { "Successfully received response from LLM." }
-                    flogInfo { "Summary from LLM: ${fullResponse.toString()}" }
+                    val response = fullResponse.toString().trim()
+                    flogInfo { "Summary from LLM: $response" }
+                    onResult(response)
                 }
             }
         } catch (e: Exception) {
             flogInfo { "Error during LLM inference: ${e.message}" }
+            onError(e.message ?: "Unknown error during inference")
         }
     }
 }

@@ -129,6 +129,7 @@ import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import android.graphics.Bitmap
 import dev.patrickgold.florisboard.ime.ai.AiManager
+import dev.patrickgold.florisboard.ime.ai.AiSuggestionProviderInstance
 
 import java.io.File
 import java.io.FileOutputStream
@@ -343,7 +344,23 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         val scaledBitmap = downscaleBitmap(bitmap)
         flogInfo(LogTopic.IMS_EVENTS) { "Screenshot downscaled to: ${scaledBitmap.width}x${scaledBitmap.height}" }
         saveBitmapForDebug(scaledBitmap)
-        aiManager.getSummary(scaledBitmap, "summarize this")
+        
+        // Set processing state
+        AiSuggestionProviderInstance.provider.setProcessing(true)
+        showShortToast("AI is processing...")
+        
+        // Get AI summary with callback
+        aiManager.getSummary(scaledBitmap, "summarize this", 
+            onResult = { summary ->
+                // Set the AI suggestion - this will automatically trigger NlpManager to refresh
+                AiSuggestionProviderInstance.provider.setAiSuggestion(summary)
+                flogInfo(LogTopic.IMS_EVENTS) { "AI suggestion added: $summary" }
+            },
+            onError = { error ->
+                AiSuggestionProviderInstance.provider.setProcessing(false)
+                flogError { "AI processing error: $error" }
+            }
+        )
     }
 
     // CALLBACK: This is where we handle permission denial

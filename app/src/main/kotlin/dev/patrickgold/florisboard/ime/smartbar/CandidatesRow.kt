@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.florisPreferenceModel
+import dev.patrickgold.florisboard.ime.ai.AiSuggestionProviderInstance
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
@@ -70,6 +71,7 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
 
     val displayMode by prefs.suggestion.displayMode.observeAsState()
     val candidates by nlpManager.activeCandidatesFlow.collectAsState()
+    val isAiProcessing by AiSuggestionProviderInstance.provider.isProcessing.collectAsState()
 
     SnyggRow(
         elementName = FlorisImeUi.SmartbarCandidatesRow.elementName,
@@ -84,7 +86,21 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
             Arrangement.Center
         },
     ) {
-        if (candidates.isNotEmpty()) {
+        if (isAiProcessing) {
+            // Show loading indicator when AI is processing
+            SnyggColumn(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .weight(1f, fill = false),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                SnyggText(
+                    text = "AI is thinking...",
+                    elementName = FlorisImeUi.SmartbarCandidateWord.elementName,
+                )
+            }
+        } else if (candidates.isNotEmpty()) {
             val candidateModifier = if (candidates.size == 1) {
                 Modifier
                     .fillMaxHeight()
