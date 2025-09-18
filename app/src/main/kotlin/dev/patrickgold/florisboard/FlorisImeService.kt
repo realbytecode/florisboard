@@ -148,13 +148,11 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
     companion object {
         private val InlineSuggestionUiSmallestSize = Size(0, 0)
         private val InlineSuggestionUiBiggestSize = Size(Int.MAX_VALUE, Int.MAX_VALUE)
+        private const val MAX_AI_TEXT_LENGTH = 2000  // Easily configurable max text length for AI processing
 
         fun onAiSuggestKeyPress() {
             flogInfo { "AI Suggest key press received in FlorisImeService companion!" }
-            // FlorisImeServiceReference.get()?.let { service ->
-            //    ScreenCaptureManager.requestScreenshot(service)
-            // }
-            FlorisImeServiceReference.get()?.captureScreenWithoutIme()
+            FlorisImeServiceReference.get()?.processTextWithAi()
         }
 
         fun currentInputConnection(): InputConnection? {
@@ -307,6 +305,91 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
 
             aiCaptureInProgress = false
         }
+    }
+
+    private fun processTextWithAi() {
+        // Check if already processing
+        if (aiCaptureInProgress) return
+
+        // Get text from input field
+        val ic = currentInputConnection
+        if (ic == null) {
+            showShortToast("No active text field")
+            return
+        }
+
+        // Get text - try multiple sources
+        val editorContent = editorInstance.activeContent
+        var hasSelection = false
+        val textToProcess = when {
+            editorContent.selectedText.isNotBlank() -> {
+                hasSelection = true
+                editorContent.selectedText
+            }
+            editorContent.text.isNotBlank() -> editorContent.text
+            else -> {
+                val selected = ic.getSelectedText(0)?.toString() ?: ""
+                val beforeCursor = ic.getTextBeforeCursor(1000, 0)?.toString() ?: ""
+                when {
+                    selected.isNotBlank() -> {
+                        hasSelection = true
+                        selected
+                    }
+                    beforeCursor.isNotBlank() -> beforeCursor
+                    else -> ""
+                }
+            }
+        }
+
+        // Handle empty text
+        if (textToProcess.isBlank()) {
+            showShortToast("No text to rewrite")
+            return
+        }
+
+        // Validate text length
+        if (textToProcess.length > MAX_AI_TEXT_LENGTH) {
+            showShortToast("Text too long (max $MAX_AI_TEXT_LENGTH chars)")
+            return
+        }
+
+        // Process with AI
+        aiCaptureInProgress = true
+        showShortToast("AI is rewriting...")
+
+        // Trim the text for AI processing
+        val trimmedText = textToProcess.trim()
+
+        aiManager.generateTextResponse(
+            text = trimmedText,
+            onResult = { response ->
+                if (response.isNotBlank()) {
+                    try {
+                        // Auto-insert the response
+                        if (hasSelection) {
+                            // Replace selected text
+                            ic.commitText(response, 1)
+                        } else {
+                            // Clear the original text and insert new one
+                            // Use trimmed text length for accurate deletion
+                            val textLength = trimmedText.length
+                            ic.deleteSurroundingText(textLength, 0)
+                            ic.commitText(response, 1)
+                        }
+                        flogInfo { "AI response auto-inserted: ${response.take(50)}..." }
+                    } catch (e: Exception) {
+                        showShortToast("Failed to insert text")
+                        flogInfo { "Text insertion failed: ${e.message}" }
+                    }
+                }
+                aiCaptureInProgress = false
+            },
+            onError = { error ->
+                showShortToast("AI failed: ${error.take(30)}")
+                flogInfo { "AI processing error: $error" }
+                aiCaptureInProgress = false
+            }
+        )
     }
 
 

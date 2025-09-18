@@ -155,4 +155,50 @@ class AiManager(private val context: Context) {
             onError(e.message ?: "Unknown error during inference")
         }
     }
+
+    /**
+     * Generates a text rewrite using the AI model
+     * @param text The text to rewrite
+     * @param onResult Callback for successful response
+     * @param onError Callback for errors
+     */
+    fun generateTextResponse(
+        text: String,
+        onResult: (String) -> Unit,
+        onError: (String) -> Unit = {}
+    ) {
+        flogInfo { "Processing text for rewrite: '${text.take(50)}...'" }
+
+        if (llmInference == null || llmSession == null) {
+            onError("Model not loaded")
+            return
+        }
+
+        try {
+            // Simple rewrite prompt
+            val prompt = "Rewrite this: $text <end_of_turn>"
+            llmSession?.addQueryChunk(prompt)
+
+            val fullResponse = StringBuilder()
+            llmSession?.generateResponseAsync { partialResult, done ->
+                fullResponse.append(partialResult)
+                if (done) {
+                    val response = fullResponse.toString()
+                        .replace("<end_of_turn>", "")
+                        .replace("<start_of_turn>", "")
+                        .trim()
+
+                    if (response.isNotBlank()) {
+                        flogInfo { "Generated rewrite: $response" }
+                        onResult(response)
+                    } else {
+                        onError("Empty response")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            flogInfo { "Error during text rewrite: ${e.message}" }
+            onError(e.message ?: "Processing error")
+        }
+    }
 }
