@@ -49,21 +49,25 @@ data class PromptsConfiguration(
  * Loads prompts from assets and provides them to the AI system
  */
 class PromptsManager(private val context: Context) {
-    
+
     private val promptsCache = mutableMapOf<String, String>()
     private var configuration: PromptsConfiguration? = null
+    private var tonePrompts: Map<String, TonePrompt>? = null
     private val json = Json { ignoreUnknownKeys = true }
-    
+
     companion object {
         private const val PROMPTS_DIR = "ai/prompts"
         private const val CONFIG_FILE = "$PROMPTS_DIR/prompts_config.json"
+        private const val TONE_PROMPTS_FILE = "$PROMPTS_DIR/prompts.json"
+        const val DEFAULT_TONE = "work-polite"
     }
-    
+
     init {
         // Loading a small JSON file is fast, no need to defer
         loadConfiguration()
+        loadTonePrompts()
     }
-    
+
     /**
      * Loads the prompts configuration from assets
      */
@@ -89,7 +93,7 @@ class PromptsManager(private val context: Context) {
             )
         }
     }
-    
+
     /**
      * Gets a prompt by its ID
      * @param promptId The ID of the prompt to retrieve
@@ -98,18 +102,18 @@ class PromptsManager(private val context: Context) {
     fun getPrompt(promptId: String): String? {
         // Check cache first
         promptsCache[promptId]?.let { return it }
-        
+
         // Find the prompt configuration
         val promptConfig = configuration?.prompts?.find { it.id == promptId }
         if (promptConfig == null) {
             flogError { "Prompt with ID '$promptId' not found in configuration" }
             return null
         }
-        
+
         // Load the prompt from file
         return loadPromptFromFile(promptConfig)
     }
-    
+
     /**
      * Gets the default prompt
      * @return The default prompt text, or a fallback if none is configured
@@ -117,14 +121,14 @@ class PromptsManager(private val context: Context) {
     fun getDefaultPrompt(): String {
         val defaultConfig = configuration?.prompts?.find { it.default }
             ?: configuration?.prompts?.firstOrNull()
-        
+
         if (defaultConfig != null) {
             return loadPromptFromFile(defaultConfig) ?: getFallbackPrompt()
         }
-        
+
         return getFallbackPrompt()
     }
-    
+
     /**
      * Loads a prompt from its file
      * @param config The prompt configuration
@@ -134,25 +138,25 @@ class PromptsManager(private val context: Context) {
         try {
             val promptPath = "$PROMPTS_DIR/${config.file}"
             val promptText = context.assets.open(promptPath).bufferedReader().use { it.readText() }
-            
+
             // Cache the loaded prompt
             promptsCache[config.id] = promptText
             flogInfo { "Loaded prompt '${config.id}' from ${config.file}" }
-            
+
             return promptText
         } catch (e: IOException) {
             flogError { "Failed to load prompt file '${config.file}': ${e.message}" }
             return null
         }
     }
-    
+
     /**
      * Returns a fallback prompt in case of loading failures
      */
     private fun getFallbackPrompt(): String {
         return "Analyze the screenshot and provide a helpful response based on what you see."
     }
-    
+
     /**
      * Gets all available prompt configurations
      * @return List of prompt configurations
@@ -160,12 +164,72 @@ class PromptsManager(private val context: Context) {
     fun getAvailablePrompts(): List<PromptConfig> {
         return configuration?.prompts ?: emptyList()
     }
-    
+
     /**
      * Clears the prompt cache
      */
     fun clearCache() {
         promptsCache.clear()
         flogInfo { "Prompt cache cleared" }
+    }
+
+    /**
+     * Loads tone-based prompts from JSON file
+     */
+    private fun loadTonePrompts() {
+        try {
+            val jsonContent = context.assets.open(TONE_PROMPTS_FILE).bufferedReader().use { it.readText() }
+            tonePrompts = json.decodeFromString<Map<String, TonePrompt>>(jsonContent)
+            flogInfo { "Loaded ${tonePrompts?.size ?: 0} tone prompts" }
+        } catch (e: Exception) {
+            flogError { "Failed to load tone prompts: ${e.message}" }
+            // Create a fallback tone prompt
+            tonePrompts = mapOf(
+                DEFAULT_TONE to TonePrompt(
+                    description = "Default rewrite",
+                    systemPrompt = "Rewrite the text clearly.",
+                    instructionTemplate = "Rewrite this: {input}",
+                    examples = emptyList()
+                )
+            )
+        }
+    }
+
+    /**
+     * Gets a formatted prompt for a specific tone
+     * @param tone The tone to use (e.g., "work-polite", "personal-direct")
+     * @param userInput The user's text to rewrite
+     * @return The formatted prompt ready for LLM
+     */
+    fun getPromptForTone(tone: String, userInput: String): String {
+        val tonePrompt = tonePrompts?.get(tone) ?: tonePrompts?.get(DEFAULT_TONE)
+        if (tonePrompt == null) {
+            flogError { "No tone prompt found for '$tone', using basic rewrite" }
+            return "Rewrite this: $userInput"
+        }
+
+        // Build the full prompt with system prompt and instruction
+        val instruction = tonePrompt.instructionTemplate.replace("{input}", userInput)
+
+        // Combine system prompt with instruction
+        // Format: system prompt, then instruction
+        return "${tonePrompt.systemPrompt}\n\n$instruction"
+    }
+
+    /**
+     * Gets all available tones
+     * @return List of available tone names
+     */
+    fun getAvailableTones(): List<String> {
+        return tonePrompts?.keys?.toList() ?: listOf(DEFAULT_TONE)
+    }
+
+    /**
+     * Checks if a tone exists
+     * @param tone The tone name to check
+     * @return True if the tone exists, false otherwise
+     */
+    fun hasTone(tone: String): Boolean {
+        return tonePrompts?.containsKey(tone) == true
     }
 }

@@ -130,6 +130,7 @@ import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 import android.graphics.Bitmap
 import dev.patrickgold.florisboard.ime.ai.AiManager
 import dev.patrickgold.florisboard.ime.ai.AiSuggestionProviderInstance
+import dev.patrickgold.florisboard.ime.ai.PromptsManager
 
 import java.io.File
 import java.io.FileOutputStream
@@ -360,8 +361,12 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         // Trim the text for AI processing
         val trimmedText = textToProcess.trim()
 
+        // Use the default tone from PromptsManager
+        val tone = PromptsManager.DEFAULT_TONE  // Uses the configured default tone
+
         aiManager.generateTextResponse(
             text = trimmedText,
+            tone = tone,
             onResult = { response ->
                 if (response.isNotBlank()) {
                     try {

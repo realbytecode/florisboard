@@ -157,17 +157,19 @@ class AiManager(private val context: Context) {
     }
 
     /**
-     * Generates a text rewrite using the AI model
+     * Generates a text rewrite using the AI model with a specific tone
      * @param text The text to rewrite
+     * @param tone The tone to use (e.g., "work-polite", "personal-direct")
      * @param onResult Callback for successful response
      * @param onError Callback for errors
      */
     fun generateTextResponse(
         text: String,
+        tone: String = PromptsManager.DEFAULT_TONE,
         onResult: (String) -> Unit,
         onError: (String) -> Unit = {}
     ) {
-        flogInfo { "Processing text for rewrite: '${text.take(50)}...'" }
+        flogInfo { "Processing text for rewrite with tone '$tone': '${text.take(50)}...'" }
 
         if (llmInference == null || llmSession == null) {
             onError("Model not loaded")
@@ -175,8 +177,9 @@ class AiManager(private val context: Context) {
         }
 
         try {
-            // Simple rewrite prompt
-            val prompt = "Rewrite this: $text <end_of_turn>"
+            // Get tone-based prompt from PromptsManager
+            val prompt = promptsManager.getPromptForTone(tone, text) + " <end_of_turn>"
+            flogInfo { "Using prompt: '${prompt.take(100)}...'" }
             llmSession?.addQueryChunk(prompt)
 
             val fullResponse = StringBuilder()
@@ -200,5 +203,13 @@ class AiManager(private val context: Context) {
             flogInfo { "Error during text rewrite: ${e.message}" }
             onError(e.message ?: "Processing error")
         }
+    }
+
+    /**
+     * Gets all available tone options
+     * @return List of available tone names
+     */
+    fun getAvailableTones(): List<String> {
+        return promptsManager.getAvailableTones()
     }
 }
