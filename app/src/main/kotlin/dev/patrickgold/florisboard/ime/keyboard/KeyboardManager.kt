@@ -22,6 +22,7 @@ import android.view.KeyEvent
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.MutableLiveData
 import dev.patrickgold.florisboard.FlorisImeService
@@ -99,6 +100,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     val activeState = ObservableKeyboardState.new()
     var smartbarVisibleDynamicActionsCount by mutableIntStateOf(0)
     private var lastToastReference = WeakReference<Toast>(null)
+
+    // Tone selection state
+    var selectedToneContext by mutableStateOf("work")
+    var selectedToneStyle by mutableStateOf("polite")
 
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)

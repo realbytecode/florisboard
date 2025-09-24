@@ -58,6 +58,7 @@ import dev.patrickgold.florisboard.ime.nlp.NlpInlineAutofill
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionButton
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsRow
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ToggleOverflowPanelAction
+import dev.patrickgold.florisboard.ime.smartbar.tone.ToneSelectorRow
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.compose.horizontalTween
@@ -161,10 +162,26 @@ private fun SmartbarMainRow(modifier: Modifier = Modifier) {
         SnyggIconButton(
             elementName = FlorisImeUi.SmartbarSharedActionsToggle.elementName,
             onClick = {
-                if (/* was */ sharedActionsExpanded) {
-                    keyboardManager.activeState.isActionsOverflowVisible = false
+                // Cycle through: TONE_SELECTOR -> ACTIONS -> SUGGESTIONS -> TONE_SELECTOR
+                val currentLayout = prefs.smartbar.layout.get()
+                val nextLayout = when (currentLayout) {
+                    SmartbarLayout.TONE_SELECTOR -> SmartbarLayout.SUGGESTIONS_ACTIONS_SHARED
+                    SmartbarLayout.SUGGESTIONS_ACTIONS_SHARED -> {
+                        if (!sharedActionsExpanded) {
+                            // Currently showing suggestions, switch to actions
+                            prefs.smartbar.sharedActionsExpanded.set(true)
+                            currentLayout
+                        } else {
+                            // Currently showing actions, switch to tone selector
+                            prefs.smartbar.sharedActionsExpanded.set(false)
+                            SmartbarLayout.TONE_SELECTOR
+                        }
+                    }
+                    else -> SmartbarLayout.TONE_SELECTOR
                 }
-                prefs.smartbar.sharedActionsExpanded.set(!sharedActionsExpanded)
+                if (nextLayout != currentLayout) {
+                    prefs.smartbar.layout.set(nextLayout)
+                }
             },
             modifier = Modifier.sizeIn(maxHeight = FlorisImeSizing.smartbarHeight).aspectRatio(1f)
         ) {
@@ -351,6 +368,16 @@ private fun SmartbarMainRow(modifier: Modifier = Modifier) {
                     StickyAction()
                     CenterContent()
                     ExtendedActionsToggle()
+                }
+            }
+
+            SmartbarLayout.TONE_SELECTOR -> {
+                if (!flipToggles) {
+                    SharedActionsToggle()
+                    ToneSelectorRow(modifier = Modifier.weight(1f))
+                } else {
+                    ToneSelectorRow(modifier = Modifier.weight(1f))
+                    SharedActionsToggle()
                 }
             }
         }

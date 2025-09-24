@@ -361,8 +361,8 @@ class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.Scr
         // Trim the text for AI processing
         val trimmedText = textToProcess.trim()
 
-        // Use the default tone from PromptsManager
-        val tone = PromptsManager.DEFAULT_TONE  // Uses the configured default tone
+        // Use the selected tone from keyboard manager
+        val tone = "${keyboardManager.selectedToneContext}-${keyboardManager.selectedToneStyle}"
 
         aiManager.generateTextResponse(
             text = trimmedText,
