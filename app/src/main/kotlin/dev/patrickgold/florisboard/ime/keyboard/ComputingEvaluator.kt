@@ -178,6 +178,9 @@ fun ComputingEvaluator.computeLabel(data: KeyData): String? {
 fun ComputingEvaluator.computeImageVector(data: KeyData): ImageVector? {
     val evaluator = this
     return when (data.code) {
+        KeyCode.AI_SUGGEST -> {
+            this.context()?.vectorResource(id = R.drawable.ic_ai_suggest)
+        }
         KeyCode.ARROW_LEFT -> {
             Icons.AutoMirrored.Filled.KeyboardArrowLeft
         }

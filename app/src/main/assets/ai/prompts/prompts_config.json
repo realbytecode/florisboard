@@ -1,0 +1,20 @@
+{
+  "prompts": [
+    {
+      "id": "response_suggestion",
+      "name": "Smart Response",
+      "description": "Suggests contextual responses based on screen content",
+      "file": "response_suggestion.txt",
+      "icon": "reply",
+      "default": true
+    },
+    {
+      "id": "summarize",
+      "name": "Summarize",
+      "description": "Summarizes screen content",
+      "file": "summarize.txt",
+      "icon": "summarize",
+      "default": false
+    }
+  ]
+}

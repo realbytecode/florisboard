@@ -113,6 +113,7 @@ import dev.patrickgold.florisboard.lib.util.ViewUtils
 import dev.patrickgold.florisboard.lib.util.debugSummarize
 import dev.patrickgold.florisboard.lib.util.launchActivity
 import dev.patrickgold.jetpref.datastore.model.observeAsState
+import dev.patrickgold.florisboard.ime.core.ScreenCaptureManager
 import java.lang.ref.WeakReference
 import org.florisboard.lib.android.AndroidInternalR
 import org.florisboard.lib.android.AndroidVersion
@@ -126,24 +127,34 @@ import org.florisboard.lib.snygg.ui.SnyggButton
 import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
+import android.graphics.Bitmap
+import dev.patrickgold.florisboard.ime.ai.AiManager
+import dev.patrickgold.florisboard.ime.ai.AiSuggestionProviderInstance
+import dev.patrickgold.florisboard.ime.ai.PromptsManager
 
-/**
- * Global weak reference for the [FlorisImeService] class. This is needed as certain actions (request hide, switch to
- * another input method, getting the editor instance / input connection, etc.) can only be performed by an IME
- * service class and no context-bound managers. This reference is exclusively used by the companion helper methods
- * of [FlorisImeService], which provide a safe and memory-leak-free way of performing certain actions on the Floris
- * input method service instance.
- */
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
 private var FlorisImeServiceReference = WeakReference<FlorisImeService?>(null)
 
-/**
- * Core class responsible for linking together all managers and UI compose-ables to provide an IME service. Sets
- * up the window and context to be lifecycle-aware, so LiveData and Jetpack Compose can be used without issues.
- */
-class FlorisImeService : LifecycleInputMethodService() {
+class FlorisImeService : LifecycleInputMethodService(), ScreenCaptureManager.ScreenCaptureListener {
+
     companion object {
         private val InlineSuggestionUiSmallestSize = Size(0, 0)
         private val InlineSuggestionUiBiggestSize = Size(Int.MAX_VALUE, Int.MAX_VALUE)
+        private const val MAX_AI_TEXT_LENGTH = 2000  // Easily configurable max text length for AI processing
+
+        fun onAiSuggestKeyPress() {
+            flogInfo { "AI Suggest key press received in FlorisImeService companion!" }
+            FlorisImeServiceReference.get()?.processTextWithAi()
+        }
 
         fun currentInputConnection(): InputConnection? {
             return FlorisImeServiceReference.get()?.currentInputConnection
@@ -258,6 +269,8 @@ class FlorisImeService : LifecycleInputMethodService() {
     private val subtypeManager by subtypeManager()
     private val themeManager by themeManager()
 
+    private val aiManager by lazy { AiManager(this) }
+
     private val activeState get() = keyboardManager.activeState
     private var inputWindowView by mutableStateOf<View?>(null)
     private var inputViewSize by mutableStateOf(IntSize.Zero)
@@ -266,17 +279,134 @@ class FlorisImeService : LifecycleInputMethodService() {
     private var isFullscreenUiMode by mutableStateOf(false)
     private var isExtractUiShown by mutableStateOf(false)
     private var resourcesContext by mutableStateOf(this as Context)
-
+    private var aiCaptureInProgress = false
     private val wallpaperChangeReceiver = WallpaperChangeReceiver()
 
     init {
         setTheme(R.style.FlorisImeTheme)
     }
 
+    fun captureScreenWithoutIme() {
+        if (aiCaptureInProgress) return       // debounce double-taps
+        aiCaptureInProgress = true
+
+        // 1. Hide the keyboard
+        requestHideSelf(0)
+
+        // 2. Wait just long enough for the window to disappear (≈2 frames)
+        lifecycleScope.launch {
+            delay(360)                        // 120 ms ≈ 2 display frames at 60 Hz
+
+            // 3. Take the screenshot
+            ScreenCaptureManager.requestScreenshot(this@FlorisImeService)
+
+            // 4. Show the keyboard again after a tiny pause (ensures projection starts)
+            delay(100)
+            requestShowSelf(0)
+
+            aiCaptureInProgress = false
+        }
+    }
+
+    private fun processTextWithAi() {
+        // Check if already processing
+        if (aiCaptureInProgress) return
+
+        // Get text from input field
+        val ic = currentInputConnection
+        if (ic == null) {
+            showShortToast("No active text field")
+            return
+        }
+
+        // Get text - try multiple sources
+        val editorContent = editorInstance.activeContent
+        var hasSelection = false
+        val textToProcess = when {
+            editorContent.selectedText.isNotBlank() -> {
+                hasSelection = true
+                editorContent.selectedText
+            }
+            editorContent.text.isNotBlank() -> editorContent.text
+            else -> {
+                val selected = ic.getSelectedText(0)?.toString() ?: ""
+                val beforeCursor = ic.getTextBeforeCursor(1000, 0)?.toString() ?: ""
+                when {
+                    selected.isNotBlank() -> {
+                        hasSelection = true
+                        selected
+                    }
+                    beforeCursor.isNotBlank() -> beforeCursor
+                    else -> ""
+                }
+            }
+        }
+
+        // Handle empty text
+        if (textToProcess.isBlank()) {
+            showShortToast("No text to rewrite")
+            return
+        }
+
+        // Validate text length
+        if (textToProcess.length > MAX_AI_TEXT_LENGTH) {
+            showShortToast("Text too long (max $MAX_AI_TEXT_LENGTH chars)")
+            return
+        }
+
+        // Process with AI
+        aiCaptureInProgress = true
+        showShortToast("AI is rewriting...")
+
+        // Trim the text for AI processing
+        val trimmedText = textToProcess.trim()
+
+        // Use the selected tone from keyboard manager
+        val tone = "${keyboardManager.selectedToneContext}-${keyboardManager.selectedToneStyle}"
+
+        aiManager.generateTextResponse(
+            text = trimmedText,
+            tone = tone,
+            onResult = { response ->
+                if (response.isNotBlank()) {
+                    try {
+                        // Auto-insert the response
+                        if (hasSelection) {
+                            // Replace selected text
+                            ic.commitText(response, 1)
+                        } else {
+                            // Clear the original text and insert new one
+                            // Use trimmed text length for accurate deletion
+                            val textLength = trimmedText.length
+                            ic.deleteSurroundingText(textLength, 0)
+                            ic.commitText(response, 1)
+                        }
+                        flogInfo { "AI response auto-inserted: ${response.take(50)}..." }
+                    } catch (e: Exception) {
+                        showShortToast("Failed to insert text")
+                        flogInfo { "Text insertion failed: ${e.message}" }
+                    }
+                }
+                aiCaptureInProgress = false
+            },
+            onError = { error ->
+                showShortToast("AI failed: ${error.take(30)}")
+                flogInfo { "AI processing error: $error" }
+                aiCaptureInProgress = false
+            }
+        )
+    }
+
+
     override fun onCreate() {
         super.onCreate()
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
+
+        ScreenCaptureManager.setListener(this)
+        // Initialize AI Manager
+        aiManager.initialize()
+
         subtypeManager.activeSubtypeFlow.collectLatestIn(lifecycleScope) { subtype ->
             val config = Configuration(resources.configuration)
             if (prefs.localization.displayKeyboardLabelsInSubtypeLanguage.get()) {
@@ -297,6 +427,79 @@ class FlorisImeService : LifecycleInputMethodService() {
         @Suppress("DEPRECATION") // We do not retrieve the wallpaper but only listen to changes
         registerReceiver(wallpaperChangeReceiver, IntentFilter(Intent.ACTION_WALLPAPER_CHANGED))
     }
+
+    // CALLBACK: This is where we receive the final screenshot
+    override fun onScreenshotCaptured(bitmap: Bitmap) {
+        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot received in FlorisImeService! Original size: ${bitmap.width}x${bitmap.height}" }
+        val scaledBitmap = downscaleBitmap(bitmap)
+        flogInfo(LogTopic.IMS_EVENTS) { "Screenshot downscaled to: ${scaledBitmap.width}x${scaledBitmap.height}" }
+        saveBitmapForDebug(scaledBitmap)
+        
+        // Set processing state
+        AiSuggestionProviderInstance.provider.setProcessing(true)
+        showShortToast("Generating AI response...")
+        
+        // Generate contextual AI response based on screenshot
+        // Using the "response_suggestion" prompt for smart replies
+        aiManager.generateResponse(scaledBitmap, "response_suggestion", 
+            onResult = { response ->
+                // Set the AI-generated response - this will automatically trigger NlpManager to refresh
+                AiSuggestionProviderInstance.provider.setAiSuggestion(response)
+                flogInfo(LogTopic.IMS_EVENTS) { "AI generated response: $response" }
+            },
+            onError = { error ->
+                AiSuggestionProviderInstance.provider.setProcessing(false)
+                flogError { "AI response generation failed: $error" }
+            }
+        )
+    }
+
+    // CALLBACK: This is where we handle permission denial
+    override fun onPermissionDenied() {
+        showShortToast("Screen capture permission was denied.")
+    }
+
+    private fun downscaleBitmap(bitmap: Bitmap): Bitmap {
+        val maxDimension = 720
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
+
+        if (originalWidth <= maxDimension && originalHeight <= maxDimension) {
+            return bitmap
+        }
+
+        val newWidth: Int
+        val newHeight: Int
+        if (originalWidth > originalHeight) {
+            newWidth = maxDimension
+            newHeight = (originalHeight * (maxDimension.toFloat() / originalWidth)).toInt()
+        } else {
+            newHeight = maxDimension
+            newWidth = (originalWidth * (maxDimension.toFloat() / originalHeight)).toInt()
+        }
+
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+
+    private fun saveBitmapForDebug(bitmap: Bitmap) {
+        try {
+            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
+            val fileName = "screenshot_$timestamp.png"
+            val directory = getExternalFilesDir(null)
+            val file = File(directory, fileName)
+
+            val fileOutputStream = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fileOutputStream)
+            fileOutputStream.close()
+
+            flogInfo(LogTopic.IMS_EVENTS) { "Screenshot saved for debugging to: ${file.absolutePath}" }
+            showShortToast("Screenshot saved!")
+
+        } catch (e: Exception) {
+            flogError { "Failed to save bitmap for debug: ${e.message}" }
+        }
+    }
+
 
     override fun onCreateInputView(): View {
         super.installViewTreeOwners()
@@ -334,6 +537,9 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        ScreenCaptureManager.setListener(null)
+
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
         inputWindowView = null

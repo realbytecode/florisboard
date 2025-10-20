@@ -21,6 +21,11 @@ ksp = "2.1.20-1.0.32"
 mikepenz-aboutlibraries = "12.1.2"
 patrickgold-compose-tooltip = "0.2.0-rc02"
 patrickgold-jetpref = "0.2.0-rc04"
+netOpenidAppauth = "0.11.1"
+mediapipe-tasks-genai = "0.10.25"
+workRuntime = "2.10.0"
+androidx-localbroadcastmanager = "1.1.0"
+mediapipe-tasks-vision = "0.10.14"
 
 # Testing
 androidx-benchmark = "1.3.4"
@@ -54,6 +59,7 @@ androidx-navigation-compose = { module = "androidx.navigation:navigation-compose
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "androidx-profileinstaller" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "androidx-room" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "androidx-room" }
+androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntime" }
 cache4k = { module = "io.github.reactivecircus.cache4k:cache4k", version.ref = "cache4k" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
@@ -65,6 +71,10 @@ patrickgold-compose-tooltip = { module = "dev.patrickgold.compose.tooltip:toolti
 patrickgold-jetpref-datastore-model = { module = "dev.patrickgold.jetpref:jetpref-datastore-model", version.ref = "patrickgold-jetpref" }
 patrickgold-jetpref-datastore-ui = { module = "dev.patrickgold.jetpref:jetpref-datastore-ui", version.ref = "patrickgold-jetpref" }
 patrickgold-jetpref-material-ui = { module = "dev.patrickgold.jetpref:jetpref-material-ui", version.ref = "patrickgold-jetpref" }
+mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version.ref = "mediapipe-tasks-genai" }
+openid-appauth = { group = "net.openid", name = "appauth", version.ref = "netOpenidAppauth" }
+androidx-localbroadcastmanager = { module = "androidx.localbroadcastmanager:localbroadcastmanager", version.ref = "androidx-localbroadcastmanager" }
+mediapipe-tasks-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe-tasks-vision" }
 
 # Testing
 androidx-benchmark-macro = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "androidx-benchmark" }

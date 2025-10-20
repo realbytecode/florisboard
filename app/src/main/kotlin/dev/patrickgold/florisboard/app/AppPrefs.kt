@@ -655,7 +655,7 @@ class AppPrefs : PreferenceModel("florisboard-app-prefs") {
         )
         val layout = enum(
             key = "smartbar__layout",
-            default = SmartbarLayout.SUGGESTIONS_ACTIONS_SHARED,
+            default = SmartbarLayout.TONE_SELECTOR,
         )
         val actionArrangement = custom(
             key = "smartbar__action_arrangement",

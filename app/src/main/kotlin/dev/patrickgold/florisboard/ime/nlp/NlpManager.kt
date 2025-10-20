@@ -29,6 +29,7 @@ import dev.patrickgold.florisboard.ime.core.Subtype
 import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.editor.EditorRange
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionProvider
+import dev.patrickgold.florisboard.ime.ai.AiSuggestionProviderInstance
 import dev.patrickgold.florisboard.ime.nlp.han.HanShapeBasedLanguageProvider
 import dev.patrickgold.florisboard.ime.nlp.latin.LatinLanguageProvider
 import dev.patrickgold.florisboard.keyboardManager
@@ -63,6 +64,7 @@ class NlpManager(context: Context) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val clipboardSuggestionProvider = ClipboardSuggestionProvider(context)
     private val emojiSuggestionProvider = EmojiSuggestionProvider(context)
+    private val aiSuggestionProvider = AiSuggestionProviderInstance.provider
     private val providers = guardedByLock {
         mapOf(
             LatinLanguageProvider.ProviderId to ProviderInstanceWrapper(LatinLanguageProvider(context)),
@@ -104,6 +106,14 @@ class NlpManager(context: Context) {
         }
         subtypeManager.activeSubtypeFlow.collectLatestIn(scope) { subtype ->
             preload(subtype)
+        }
+        // Listen for AI suggestion changes
+        aiSuggestionProvider.currentSuggestion.collectLatestIn(scope) {
+            assembleCandidates()
+        }
+        // Initialize AI provider
+        scope.launch {
+            aiSuggestionProvider.create()
         }
     }
 
@@ -281,16 +291,31 @@ class NlpManager(context: Context) {
         runBlocking {
             val candidates = when {
                 isSuggestionOn() -> {
-                    clipboardSuggestionProvider.suggest(
+                    // First check for AI suggestions
+                    val aiSuggestions = aiSuggestionProvider.suggest(
                         subtype = Subtype.DEFAULT,
                         content = editorInstance.activeContent,
-                        maxCandidateCount = 8,
+                        maxCandidateCount = 1,
                         allowPossiblyOffensive = !prefs.suggestion.blockPossiblyOffensive.get(),
                         isPrivateSession = keyboardManager.activeState.isIncognitoMode,
-                    ).ifEmpty {
-                        buildList {
-                            internalSuggestionsGuard.withLock {
-                                addAll(internalSuggestions.second)
+                    )
+                    
+                    if (aiSuggestions.isNotEmpty()) {
+                        // If we have AI suggestions, prioritize them
+                        aiSuggestions
+                    } else {
+                        // Otherwise fall back to clipboard/regular suggestions
+                        clipboardSuggestionProvider.suggest(
+                            subtype = Subtype.DEFAULT,
+                            content = editorInstance.activeContent,
+                            maxCandidateCount = 8,
+                            allowPossiblyOffensive = !prefs.suggestion.blockPossiblyOffensive.get(),
+                            isPrivateSession = keyboardManager.activeState.isIncognitoMode,
+                        ).ifEmpty {
+                            buildList {
+                                internalSuggestionsGuard.withLock {
+                                    addAll(internalSuggestions.second)
+                                }
                             }
                         }
                     }

@@ -10,6 +10,8 @@
     <string name="one_handed__move_start_btn_content_description" comment="Content description for the one-handed move to left button">Move keyboard to the left.</string>
     <string name="one_handed__move_end_btn_content_description" comment="Content description for the one-handed move to right button">Move keyboard to the right.</string>
 
+    <string name="screen_sharing_active">Keyboard AI is sharing your screen</string>
+
     <!-- Media strings -->
     <string name="settings__media__title">Emojis</string>
     <string name="media__tab__emojis" comment="Tab description for emojis in the media UI">Emojis</string>
