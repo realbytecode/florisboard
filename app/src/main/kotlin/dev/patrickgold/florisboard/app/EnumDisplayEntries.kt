@@ -449,6 +449,11 @@ private val ENUM_DISPLAY_ENTRIES = mapOf<Pair<KClass<*>, String>, @Composable ()
     SmartbarLayout::class to DEFAULT to {
         listPrefEntries {
             entry(
+                key = SmartbarLayout.TONE_SELECTOR,
+                label = stringRes(R.string.enum__smartbar_layout__tone_selector),
+                description = stringRes(R.string.enum__smartbar_layout__tone_selector__description),
+            )
+            entry(
                 key = SmartbarLayout.SUGGESTIONS_ONLY,
                 label = stringRes(R.string.enum__smartbar_layout__suggestions_only),
                 description = stringRes(R.string.enum__smartbar_layout__suggestions_only__description),
